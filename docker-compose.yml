@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+      POSTGRES_USER: ${POSTGRES_USER:-myuser}
+      POSTGRES_DB: ${POSTGRES_DB:-pictora}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-myuser} -d ${POSTGRES_DB:-pictora}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      args:
+        - NODE_ENV=production
+    restart: always
+    container_name: pictora-backend
+    ports:
+      - "8000:8000"
+    environment: 
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-pictora}
+      - PRISMA_SCHEMA_PATH=/app/packages/db/prisma/schema.prisma
+      - FAL_KEY=${FAL_KEY:-dummy-fal-key}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-dummy-s3-access-key}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-dummy-s3-secret-key}
+      - BUCKET_NAME=${BUCKET_NAME:-dummy-bucket}
+      - ENDPOINT=${ENDPOINT:-dummy-endpoint}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-dummy-razorpay-key-id}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-dummy-razorpay-key-secret}
+      - SIGNING_SECRET=${SIGNING_SECRET:-dummy-signing-secret}
+      - CLERK_JWT_PUBLIC_KEY=${CLERK_JWT_PUBLIC_KEY:-dummy-clerk-jwt-public-key}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://localhost:8000}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-sk_test_c29tZXRoaW5nLXNvbWV0aGluZy1zb21ldGhpbmc}
+      - CLERK_ISSUER=${CLERK_ISSUER:-https://clerk.dummy-issuer.com}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_dummy-key-for-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    restart: always
+    container_name: pictora-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_c29tZXRoaW5nLXNvbWV0aGluZy1zb21ldGhpbmc}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-sk_test_c29tZXRoaW5nLXNvbWV0aGluZy1zb21ldGhpbmc}
+      - CLERK_ISSUER=${CLERK_ISSUER:-https://clerk.dummy-issuer.com}
+      - NEXT_PUBLIC_STRIPE_KEY=${NEXT_PUBLIC_STRIPE_KEY:-pk_test_dummy-key-for-development}
+      - NEXT_PUBLIC_CLOUDFLARE_URL=${NEXT_PUBLIC_CLOUDFLARE_URL:-https://dummy-cloudflare-url.com}
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  pgdata:
+    driver: local

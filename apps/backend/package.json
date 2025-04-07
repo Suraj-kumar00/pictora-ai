@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "dev": "tsx watch index.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.1",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.525.0",
+    "@aws-sdk/s3-request-presigner": "^3.525.0",
+    "@clerk/clerk-sdk-node": "^5.1.6",
+    "@clerk/nextjs": "^6.11.2",
+    "@fal-ai/client": "^1.2.3",
+    "@neondatabase/serverless": "^0.10.4",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "common": "*",
+    "cors": "^2.8.5",
+    "db": "*",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "razorpay": "^2.9.5",
+    "stripe": "^17.6.0",
+    "svix": "^1.57.0"
+  }
+}

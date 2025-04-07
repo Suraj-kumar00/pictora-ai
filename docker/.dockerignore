@@ -1,0 +1,26 @@
+# Dependency folders
+node_modules
+**/node_modules
+
+# Build outputs
+.next
+dist
+build
+apps/web/out
+
+# Git & editor stuff
+.git
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs & dotenv
+*.log
+.env
+.env.*.local
+
+# Dockerfiles
+docker/*.cache

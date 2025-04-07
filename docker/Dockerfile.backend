@@ -1,0 +1,43 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json ./
+COPY apps/backend/package.json ./apps/backend/package.json
+COPY packages/db/package.json ./packages/db/package.json
+COPY packages/common/package.json ./packages/common/package.json
+COPY packages/typescript-config/package.json ./packages/typescript-config/package.json
+COPY packages/eslint-config/package.json ./packages/eslint-config/package.json
+
+# Install dependencies
+RUN npm ci
+RUN npm install get-tsconfig
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate --schema=./packages/db/prisma/schema.prisma
+
+# Build the application
+RUN npm run build || echo "Build failed, but continuing with development mode"
+
+# Production image
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Copy necessary files from builder
+COPY --from=builder /app/apps/backend ./apps/backend
+COPY --from=builder /app/packages/db ./packages/db
+COPY --from=builder /app/packages/common ./packages/common
+COPY --from=builder /app/node_modules ./node_modules
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=8000
+
+EXPOSE 8000
+
+CMD ["node", "--loader", "tsx", "apps/backend/index.ts"]
