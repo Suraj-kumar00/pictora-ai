@@ -1,34 +1,19 @@
 import Stripe from "stripe";
-import Razorpay from "razorpay";
 import { prismaClient } from "db";
 import crypto from "crypto";
 import { PlanType } from "@prisma/client";
 
 // Validate environment variables
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
 
 if (!STRIPE_SECRET_KEY) {
   console.error("Missing STRIPE_SECRET_KEY");
-}
-
-if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-  console.error("Missing Razorpay credentials");
 }
 
 // Initialize payment providers
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
       apiVersion: "2025-02-24.acacia",
-    })
-  : null;
-
-// Initialize Razorpay only if credentials are available
-const razorpay = RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET
-  ? new Razorpay({
-      key_id: RAZORPAY_KEY_ID,
-      key_secret: RAZORPAY_KEY_SECRET,
     })
   : null;
 
@@ -77,15 +62,15 @@ export async function createTransactionRecord(
 export async function createStripeSession(
   userId: string,
   plan: "basic" | "premium",
-  email: string
-) {
+  userEmail: string
+): Promise<{ id: string; url: string | null }> {
   if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables.");
+    throw new Error(
+      "Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables."
+    );
   }
 
   try {
-    const price = PLAN_PRICES[plan];
-
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -93,210 +78,74 @@ export async function createStripeSession(
           price_data: {
             currency: "usd",
             product_data: {
-              name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
-              description: `One-time payment for ${CREDITS_PER_PLAN[plan]} credits`,
+              name: plan === "basic" ? "Basic Plan" : "Premium Plan",
+              description: `One-time payment for ${plan === "basic" ? "Basic" : "Premium"} plan`,
             },
-            unit_amount: price,
+            unit_amount: PLAN_PRICES[plan] * 100, // Convert to cents
           },
           quantity: 1,
         },
       ],
       mode: "payment",
-      success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}&token=${Buffer.from(JSON.stringify({timestamp: Date.now(), orderId: '{CHECKOUT_SESSION_ID}'})).toString('base64')}`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment/cancel?session_id={CHECKOUT_SESSION_ID}&token=${Buffer.from(JSON.stringify({timestamp: Date.now(), orderId: '{CHECKOUT_SESSION_ID}'})).toString('base64')}`,
-      customer_email: email,
+      success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/pricing`,
       metadata: {
         userId,
         plan,
       },
+      customer_email: userEmail,
     });
 
-    await createTransactionRecord(
-      userId,
-      price,
-      "usd",
-      session.payment_intent as string,
-      session.id,
-      plan,
-      "PENDING"
-    );
-
-    return session;
+    return {
+      id: session.id,
+      url: session.url,
+    };
   } catch (error) {
     console.error("Stripe session creation error:", error);
-    throw error;
+    throw new Error(
+      `Failed to create payment session: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
   }
 }
 
 export async function getStripeSession(sessionId: string) {
   if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables.");
+    throw new Error(
+      "Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables."
+    );
   }
   return await stripe.checkout.sessions.retrieve(sessionId);
 }
 
-export async function createRazorpayOrder(
-  userId: string,
-  plan: keyof typeof PLAN_PRICES
-) {
-  if (!razorpay) {
-    throw new Error("Razorpay is not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your environment variables.");
-  }
-
-  try {
-    const amount = PLAN_PRICES[plan];
-    const amountInPaise = amount * 100;
-
-    const orderData = {
-      amount: amountInPaise,
-      currency: "INR",
-      receipt: `rcpt_${Date.now()}`,
-      notes: {
-        userId,
-        plan,
-      },
-    };
-
-    const order = await new Promise((resolve, reject) => {
-      razorpay.orders.create(orderData, (err: any, result: any) => {
-        if (err) reject(err);
-        resolve(result);
-      });
-    });
-
-    await createTransactionRecord(
-      userId,
-      amount,
-      "INR",
-      "",
-      (order as any).id,
-      plan,
-      "PENDING"
-    );
-
-    return {
-      key: process.env.RAZORPAY_KEY_ID,
-      amount: amountInPaise,
-      currency: "INR",
-      name: "Pictora AI",
-      description: `${plan.toUpperCase()} Plan - ${CREDITS_PER_PLAN[plan]} Credits`,
-      order_id: (order as any).id,
-      prefill: {
-        name: "",
-        email: "",
-      },
-      notes: {
-        userId,
-        plan,
-      },
-      theme: {
-        color: "#000000",
-      },
-    };
-  } catch (error) {
-    console.error("Razorpay Error:", error);
-    throw error;
-  }
-}
-
 export async function verifyStripePayment(sessionId: string) {
   if (!stripe) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables.");
+    throw new Error(
+      "Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment variables."
+    );
   }
 
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
-  const { userId, plan } = session.metadata as {
-    userId: string;
-    plan: PlanType;
-  };
-
-  // Find existing pending transaction
-  const existingTransaction = await prismaClient.transaction.findFirst({
-    where: {
-      orderId: session.id,
-      userId: userId,
-      status: "PENDING",
-    },
-  });
-
-  if (!existingTransaction) {
-    throw new Error("No pending transaction found for this session");
-  }
-
-  // Update the transaction status
-  await prismaClient.transaction.update({
-    where: {
-      id: existingTransaction.id,
-    },
-    data: {
-      status: session.payment_status === "paid" ? "SUCCESS" : "FAILED",
-    },
-  });
-
-  return session.payment_status === "paid";
-}
-
-export const verifyRazorpaySignature = async ({
-  paymentId,
-  orderId,
-  signature,
-  userId,
-  plan,
-}: {
-  paymentId: string;
-  orderId: string;
-  signature: string;
-  userId: string;
-  plan: PlanType;
-}) => {
-  if (!razorpay) {
-    throw new Error("Razorpay is not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your environment variables.");
-  }
-  
   try {
-    const body = orderId + "|" + paymentId;
-    const expectedSignature = crypto
-      .createHmac("sha256", RAZORPAY_KEY_SECRET || "")
-      .update(body)
-      .digest("hex");
-
-    const isValid = expectedSignature === signature;
-    console.log("Signature verification:", { isValid, orderId, paymentId });
-
-    const order = await razorpay.orders.fetch(orderId);
-    const amount = order.amount;
-    const currency = order.currency;
-
-    // Find existing pending transaction
-    const existingTransaction = await prismaClient.transaction.findFirst({
-      where: {
-        orderId: orderId,
-        userId: userId,
-        status: "PENDING",
-      },
-    });
-
-    if (!existingTransaction) {
-      throw new Error("No pending transaction found for this order");
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status === "paid") {
+      return {
+        success: true,
+        paymentId: session.payment_intent,
+        amount: session.amount_total,
+        currency: session.currency,
+        metadata: session.metadata,
+      };
     }
 
-    // Update the transaction status
-    await prismaClient.transaction.update({
-      where: {
-        id: existingTransaction.id,
-      },
-      data: {
-        paymentId,
-        status: isValid ? "SUCCESS" : "FAILED",
-      },
-    });
-
-    return isValid;
+    return {
+      success: false,
+      error: "Payment not completed",
+    };
   } catch (error) {
-    console.error("Signature verification error:", error);
+    console.error("Stripe payment verification error:", error);
     throw error;
   }
-};
+}
 
 // Add retry logic for database operations
 async function withRetry<T>(
@@ -380,9 +229,8 @@ export async function createSubscriptionRecord(
 
 export const PaymentService = {
   createStripeSession,
-  createRazorpayOrder,
-  verifyRazorpaySignature,
   getStripeSession,
+  verifyStripePayment,
   createSubscriptionRecord,
   addCreditsForPlan,
 };

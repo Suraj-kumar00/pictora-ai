@@ -27,7 +27,26 @@
   "dependencies": {
     "@tailwindcss/typography": "^0.5.16",
     "autoprefixer": "^10.4.21",
+    "axios": "^1.8.4",
+    "esm": "^3.2.25",
+    "jwk-to-pem": "^2.0.7",
     "postcss": "^8.5.3",
+    "replicate": "^1.0.1",
     "tailwindcss": "^4.1.3"
-  }
+  },
+  "version": "1.0.0",
+  "description": "Pictora AI is a powerful AI image platform that lets you generate stunning images and train custom AI models. Built with cutting-edge technology, it enables users to create unique AI-generated artwork and train personalized models on their own image datasets. Whether you're an artist looking to expand your creative possibilities or a developer building AI-powered image applications, Pictora AI provides an intuitive interface and robust capabilities for AI image generation and model training.",
+  "main": "index.js",
+  "module": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Suraj-kumar00/pictora-ai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Suraj-kumar00/pictora-ai/issues"
+  },
+  "homepage": "https://github.com/Suraj-kumar00/pictora-ai#readme"
 }

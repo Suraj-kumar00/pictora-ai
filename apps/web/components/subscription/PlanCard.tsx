@@ -1,25 +1,28 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckIcon, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { SignInButton } from "@clerk/nextjs";
+import { useAuth } from "@clerk/nextjs";
+
+interface Plan {
+  id: string;
+  name: string;
+  price: number;
+  credits: number;
+  features: string[];
+}
 
 interface PlanCardProps {
-  plan: {
-    type: string;
-    name: string;
-    price: number;
-    credits: number;
-    features: string[];
-  };
+  plan: Plan;
   onSelect: () => void;
 }
 
 export function PlanCard({ plan, onSelect }: PlanCardProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const { isAuthenticated } = useAuth();
-  const isPremium = plan.type === "premium";
+  const { isSignedIn } = useAuth();
+  const isPremium = plan.id === "premium";
 
   const handleClick = async () => {
     if (isLoading) return;
@@ -83,7 +86,7 @@ export function PlanCard({ plan, onSelect }: PlanCardProps) {
           ))}
         </div>
 
-        {isAuthenticated ? (
+        {isSignedIn ? (
           <Button
             className={`w-full py-6 rounded-xl font-medium tracking-wide shadow-lg transition-all duration-300 cursor-pointer
               ${
@@ -104,18 +107,17 @@ export function PlanCard({ plan, onSelect }: PlanCardProps) {
             )}
           </Button>
         ) : (
-          <SignInButton mode="modal">
-            <Button
-              className={`w-full py-6 rounded-xl font-medium tracking-wide shadow-lg transition-all duration-300 cursor-pointer
-                ${
-                  isPremium
-                    ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white hover:scale-[1.02] hover:shadow-xl"
-                    : "bg-gray-900 hover:bg-gray-800 text-white dark:bg-gray-800 dark:hover:bg-gray-700 hover:scale-[1.02] hover:shadow-xl"
-                }`}
-            >
-              Sign in to Purchase
-            </Button>
-          </SignInButton>
+          <Button
+            className={`w-full py-6 rounded-xl font-medium tracking-wide shadow-lg transition-all duration-300 cursor-pointer
+              ${
+                isPremium
+                  ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white hover:scale-[1.02] hover:shadow-xl"
+                  : "bg-gray-900 hover:bg-gray-800 text-white dark:bg-gray-800 dark:hover:bg-gray-700 hover:scale-[1.02] hover:shadow-xl"
+              }`}
+            asChild
+          >
+            <a href="/sign-in">Sign in to Purchase</a>
+          </Button>
         )}
       </div>
     </Card>

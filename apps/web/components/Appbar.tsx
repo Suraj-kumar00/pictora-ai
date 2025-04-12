@@ -47,8 +47,16 @@ export function Appbar() {
               </Link>
             </motion.div>
 
-            {/* Auth & Pricing */}
+            {/* Auth & Navigation */}
             <div className="flex items-center md:gap-4 gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition"
+                asChild
+              >
+                <Link href="/pricing">Pricing</Link>
+              </Button>
               <SignedIn>
                 <Button
                   variant="ghost"
@@ -79,14 +87,6 @@ export function Appbar() {
                 />
               </SignedIn>
               <SignedOut>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition"
-                  asChild
-                >
-                  <Link href="/pricing">Pricing</Link>
-                </Button>
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}

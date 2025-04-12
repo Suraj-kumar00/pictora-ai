@@ -1,6 +1,13 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import axios from "axios";
+import jwkToPem from "jwk-to-pem";
+
+// Initialize Clerk with secret key
+clerkClient.initialize({
+  secretKey: process.env.CLERK_SECRET_KEY
+});
 
 declare global {
   namespace Express {
@@ -10,6 +17,30 @@ declare global {
         email: string;
       };
     }
+  }
+}
+
+let cachedPublicKey: string | null = null;
+
+async function getPublicKey(): Promise<string> {
+  if (cachedPublicKey) {
+    return cachedPublicKey;
+  }
+
+  const jwksUrl = process.env.CLERK_JWT_PUBLIC_KEY;
+  if (!jwksUrl) {
+    throw new Error("Missing CLERK_JWT_PUBLIC_KEY in environment variables");
+  }
+
+  try {
+    const response = await axios.get(jwksUrl);
+    const jwk = response.data.keys[0]; // Get the first key
+    const pem = jwkToPem(jwk);
+    cachedPublicKey = pem;
+    return pem;
+  } catch (error) {
+    console.error("Error fetching JWKS:", error);
+    throw new Error("Failed to fetch public key");
   }
 }
 
@@ -27,68 +58,51 @@ export async function authMiddleware(
       return;
     }
 
-    // Debug logs
-    console.log("Received token:", token);
+    try {
+      const publicKey = await getPublicKey();
+      const decoded = jwt.verify(token, publicKey, {
+        algorithms: ["RS256"],
+        complete: true,
+      });
 
-    // Get the JWT verification key from environment variable
-    const publicKey = process.env.CLERK_JWT_PUBLIC_KEY!;
+      // Extract user ID from the decoded token
+      const userId = (decoded as any).payload.sub;
 
-    if (!publicKey) {
-      console.error("Missing CLERK_JWT_PUBLIC_KEY in environment variables");
-      res.status(500).json({ message: "Server configuration error" });
-      return;
-    }
+      if (!userId) {
+        console.error("No user ID in token payload");
+        res.status(403).json({ message: "Invalid token payload" });
+        return;
+      }
 
-    // Format the public key properly
-    const formattedKey = publicKey.replace(/\\n/g, "\n");
+      // Fetch user details from Clerk
+      const user = await clerkClient.users.getUser(userId);
+      const primaryEmail = user.emailAddresses.find(
+        (email) => email.id === user.primaryEmailAddressId
+      );
 
-    const decoded = jwt.verify(token, formattedKey, {
-      algorithms: ["RS256"],
-      issuer:
-        process.env.CLERK_ISSUER || "https://clerk.pictora-ai.com",
-      complete: true,
-    });
+      if (!primaryEmail) {
+        console.error("No email found for user");
+        res.status(400).json({ message: "User email not found" });
+        return;
+      }
 
-    console.log("Decoded token:", decoded);
+      // Attach the user ID and email to the request
+      req.userId = userId;
+      req.user = {
+        email: primaryEmail.emailAddress,
+      };
 
-    // Extract user ID from the decoded token
-    const userId = (decoded as any).payload.sub;
-
-    if (!userId) {
-      console.error("No user ID in token payload");
-      res.status(403).json({ message: "Invalid token payload" });
-      return;
-    }
-
-    // Fetch user details from Clerk
-    const user = await clerkClient.users.getUser(userId);
-    const primaryEmail = user.emailAddresses.find(
-      (email) => email.id === user.primaryEmailAddressId
-    );
-
-    if (!primaryEmail) {
-      console.error("No email found for user");
-      res.status(400).json({ message: "User email not found" });
-      return;
-    }
-
-    // Attach the user ID and email to the request
-    req.userId = userId;
-    req.user = {
-      email: primaryEmail.emailAddress,
-    };
-
-    next();
-  } catch (error) {
-    console.error("Auth error:", error);
-    if (error instanceof jwt.JsonWebTokenError) {
+      next();
+    } catch (jwtError) {
+      console.error("JWT verification error:", jwtError);
       res.status(403).json({
         message: "Invalid token",
         details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+          process.env.NODE_ENV === "development" ? (jwtError as Error).message : undefined,
       });
-      return;
     }
+  } catch (error) {
+    console.error("Auth error:", error);
     res.status(500).json({
       message: "Error processing authentication",
       details:
@@ -96,6 +110,5 @@ export async function authMiddleware(
           ? (error as Error).message
           : undefined,
     });
-    return;
   }
 }

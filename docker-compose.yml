@@ -29,24 +29,12 @@ services:
     container_name: pictora-backend
     ports:
       - "8000:8000"
-    environment: 
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-pictora}
-      - PRISMA_SCHEMA_PATH=/app/packages/db/prisma/schema.prisma
-      - FAL_KEY=${FAL_KEY:-dummy-fal-key}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-dummy-s3-access-key}
-      - S3_SECRET_KEY=${S3_SECRET_KEY:-dummy-s3-secret-key}
-      - BUCKET_NAME=${BUCKET_NAME:-dummy-bucket}
-      - ENDPOINT=${ENDPOINT:-dummy-endpoint}
-      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-dummy-razorpay-key-id}
-      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-dummy-razorpay-key-secret}
-      - SIGNING_SECRET=${SIGNING_SECRET:-dummy-signing-secret}
-      - CLERK_JWT_PUBLIC_KEY=${CLERK_JWT_PUBLIC_KEY:-dummy-clerk-jwt-public-key}
-      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-http://localhost:8000}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-sk_test_c29tZXRoaW5nLXNvbWV0aGluZy1zb21ldGhpbmc}
-      - CLERK_ISSUER=${CLERK_ISSUER:-https://clerk.dummy-issuer.com}
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/pictora?schema=public}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_dummy-key-for-development}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:4000}
     depends_on:
       postgres:
         condition: service_healthy

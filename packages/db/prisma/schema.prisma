@@ -45,10 +45,8 @@ model Model {
   outputImages    OutputImages[]
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
-  falAiRequestId  String?
   zipUrl          String
   open            Boolean    @default(false)
-  @@index([falAiRequestId])
 }
 
 enum OutputImageStatusEnum {
@@ -63,12 +61,10 @@ model OutputImages {
   modelId   String
   userId    String
   prompt    String
-  falAiRequestId    String?
   status    OutputImageStatusEnum   @default(Pending)
   model     Model   @relation(fields: [modelId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  @@index([falAiRequestId])
 }
 
 model Packs {

@@ -17,72 +17,57 @@ export function usePayment() {
   const { toast } = useToast();
   const { getToken } = useAuth();
 
-  const handlePayment = async (plan: "basic" | "premium", p0: boolean, p1: string) => {
+  const handlePayment = async (plan: any) => {
     try {
-      setIsLoading(true);
       const token = await getToken();
-      if (!token) throw new Error("Not authenticated");
+      if (!token) {
+        throw new Error("Authentication required");
+      }
 
-      const response = await fetch(`${apiUrl}/payment/create`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/payment/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan, method: "razorpay" }),
+        body: JSON.stringify({ plan, method: "stripe" }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Payment failed");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to create payment session");
+      }
 
-      await loadRazorpayScript();
+      const { sessionId, url } = await response.json();
 
-      const options = {
-        key: data.key,
-        amount: String(data.amount),
-        currency: data.currency,
-        name: data.name,
-        description: data.description,
-        order_id: data.order_id,
-        handler: function (response: RazorpayResponse) {
-          // Redirect to verify page with all necessary parameters
-          const params = new URLSearchParams({
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_signature: response.razorpay_signature,
-            plan: plan,
-            amount: String(data.amount),
-          });
-          window.location.href = `/payment/verify?${params.toString()}`;
-        },
-        modal: {
-          ondismiss: function () {
-            window.location.href = "/payment/cancel";
-          },
-        },
-        theme: {
-          color: "#000000",
-        },
-      };
+      if (url) {
+        window.location.href = url;
+      } else {
+        const stripe = await stripePromise;
+        if (!stripe) {
+          throw new Error("Stripe failed to initialize");
+        }
 
-      const razorpay = new (window as any).Razorpay(options);
-      razorpay.open();
+        const { error } = await stripe.redirectToCheckout({
+          sessionId,
+        });
+
+        if (error) {
+          throw error;
+        }
+      }
     } catch (error) {
+      console.error("Payment error:", error);
       toast({
         title: "Payment Error",
-        description: "Failed to initialize payment",
+        description: error instanceof Error ? error.message : "An error occurred during payment",
         variant: "destructive",
       });
-      window.location.href = "/payment/cancel";
-    } finally {
-      setIsLoading(false);
+      throw error;
     }
   };
 
-  return {
-    handlePayment,
-    isLoading,
-  };
+  return { handlePayment };
 }
 
 // Helper function to load Razorpay SDK
