@@ -1,6 +1,6 @@
 import { BACKEND_URL } from "@/app/config";
 import { useEffect, useState } from "react";
-import { useAuth } from "./useAuth";
+import { useAuth } from "@clerk/nextjs";
 import { creditUpdateEvent } from "@/hooks/usePayment";
 
 export function useCredits() {

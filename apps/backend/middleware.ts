@@ -4,10 +4,8 @@ import { clerkClient } from "@clerk/clerk-sdk-node";
 import axios from "axios";
 import jwkToPem from "jwk-to-pem";
 
-// Initialize Clerk with secret key
-clerkClient.initialize({
-  secretKey: process.env.CLERK_SECRET_KEY
-});
+// No need to initialize Clerk client as it's handled automatically
+// when importing from @clerk/clerk-sdk-node
 
 declare global {
   namespace Express {
@@ -21,22 +19,27 @@ declare global {
 }
 
 let cachedPublicKey: string | null = null;
+let lastFetchTime: number = 0;
+const CACHE_DURATION = 3600000; // 1 hour in milliseconds
 
 async function getPublicKey(): Promise<string> {
-  if (cachedPublicKey) {
+  const now = Date.now();
+  
+  // Return cached key if it's still valid
+  if (cachedPublicKey && (now - lastFetchTime) < CACHE_DURATION) {
     return cachedPublicKey;
   }
 
-  const jwksUrl = process.env.CLERK_JWT_PUBLIC_KEY;
-  if (!jwksUrl) {
-    throw new Error("Missing CLERK_JWT_PUBLIC_KEY in environment variables");
-  }
-
   try {
+    const jwksUrl = `${process.env.CLERK_ISSUER_URL}/.well-known/jwks.json`;
     const response = await axios.get(jwksUrl);
     const jwk = response.data.keys[0]; // Get the first key
     const pem = jwkToPem(jwk);
+    
+    // Update cache
     cachedPublicKey = pem;
+    lastFetchTime = now;
+    
     return pem;
   } catch (error) {
     console.error("Error fetching JWKS:", error);
@@ -54,7 +57,7 @@ export async function authMiddleware(
     const token = authHeader?.split(" ")[1];
 
     if (!token) {
-      res.status(401).json({ message: "No token provided" });
+      res.status(401).json({ error: "No token provided" });
       return;
     }
 
@@ -62,15 +65,15 @@ export async function authMiddleware(
       const publicKey = await getPublicKey();
       const decoded = jwt.verify(token, publicKey, {
         algorithms: ["RS256"],
-        complete: true,
-      });
+        issuer: process.env.CLERK_ISSUER_URL,
+      }) as any;
 
       // Extract user ID from the decoded token
-      const userId = (decoded as any).payload.sub;
+      const userId = decoded.sub;
 
       if (!userId) {
         console.error("No user ID in token payload");
-        res.status(403).json({ message: "Invalid token payload" });
+        res.status(403).json({ error: "Invalid token payload" });
         return;
       }
 
@@ -82,7 +85,7 @@ export async function authMiddleware(
 
       if (!primaryEmail) {
         console.error("No email found for user");
-        res.status(400).json({ message: "User email not found" });
+        res.status(400).json({ error: "User email not found" });
         return;
       }
 
@@ -96,19 +99,15 @@ export async function authMiddleware(
     } catch (jwtError) {
       console.error("JWT verification error:", jwtError);
       res.status(403).json({
-        message: "Invalid token",
-        details:
-          process.env.NODE_ENV === "development" ? (jwtError as Error).message : undefined,
+        error: "Invalid token",
+        details: process.env.NODE_ENV === "development" ? (jwtError as Error).message : undefined,
       });
     }
   } catch (error) {
     console.error("Auth error:", error);
     res.status(500).json({
-      message: "Error processing authentication",
-      details:
-        process.env.NODE_ENV === "development"
-          ? (error as Error).message
-          : undefined,
+      error: "Error processing authentication",
+      details: process.env.NODE_ENV === "development" ? (error as Error).message : undefined,
     });
   }
 }

@@ -28,13 +28,13 @@ const replicateModel = new ReplicateModel();
 
 // Initialize S3 Client
 const s3Client = new S3Client({
-  region: "auto",
-  endpoint: process.env.ENDPOINT || "https://s3.amazonaws.com",
+  region: "ap-south-1",
+  endpoint: "https://s3.ap-south-1.amazonaws.com",
   credentials: {
     accessKeyId: process.env.S3_ACCESS_KEY || "",
     secretAccessKey: process.env.S3_SECRET_KEY || "",
   },
-  forcePathStyle: true, // Required for some S3-compatible services
+  forcePathStyle: false,
 });
 
 // Function to check database connection
@@ -51,29 +51,49 @@ function checkDatabaseConnection() {
 const app = express();
 app.use(
   cors({
-    origin: ["http://localhost:3000"],
+    origin: [process.env.FRONTEND_URL || "http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-amz-acl"],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 app.get("/pre-signed-url", async (req, res) => {
-  const key = `models/${Date.now()}_${Math.random()}.zip`;
-  
-  const command = new PutObjectCommand({
-    Bucket: process.env.BUCKET_NAME,
-    Key: key,
-    ContentType: "application/zip",
-  });
-
   try {
-    const url = await getSignedUrl(s3Client, command, { expiresIn: 300 });
-    res.json({ url, key });
-  } catch (error) {
-    console.error("Error generating presigned URL:", error);
-    res.status(500).json({ error: "Failed to generate presigned URL" });
+    if (!process.env.BUCKET_NAME) {
+      throw new Error("BUCKET_NAME environment variable is not set");
+    }
+
+    const key = `models/${Date.now()}_${Math.random().toString(36).substring(7)}.zip`;
+    
+    const command = new PutObjectCommand({
+      Bucket: process.env.BUCKET_NAME,
+      Key: key,
+      ContentType: "application/zip",
+      ACL: "public-read",
+    });
+
+    const url = await getSignedUrl(s3Client, command, { 
+      expiresIn: 3600,
+      signableHeaders: new Set(['host', 'x-amz-acl']),
+      signingRegion: 'ap-south-1',
+      signingService: 's3',
+      useAccelerateEndpoint: false,
+    });
+    
+    res.json({ 
+      url, 
+      key,
+      bucket: process.env.BUCKET_NAME,
+      region: "ap-south-1"
+    });
+  } catch (error: any) {
+    console.error("Error generating pre-signed URL:", error);
+    res.status(500).json({ 
+      error: "Failed to generate upload URL",
+      details: error.message
+    });
   }
 });
 
@@ -255,48 +275,61 @@ app.post("/pack/generate", authMiddleware, async (req, res) => {
 });
 
 app.get("/pack/bulk", async (req, res) => {
-  const packs = await prismaClient.packs.findMany({});
+  try {
+    const packs = await prismaClient.packs.findMany({
+      include: {
+        prompts: true
+      }
+    });
 
-  res.json({
-    packs,
-  });
+    const formattedPacks = packs.map(pack => ({
+      id: pack.id,
+      name: pack.name,
+      description: pack.description,
+      imageUrl1: pack.imageUrl1,
+      imageUrl2: pack.imageUrl2,
+      imageUrl3: pack.imageUrl3 || "",
+      imageUrl4: pack.imageUrl4 || "",
+      category: pack.category || "",
+      imagesCount: pack.imagesCount,
+      createdAt: pack.createdAt.toISOString(),
+      prompts: pack.prompts.map(p => p.prompt)
+    }));
+
+    res.json({ packs: formattedPacks });
+  } catch (error) {
+    console.error("Error fetching packs:", error);
+    res.status(500).json({ 
+      error: "Failed to fetch packs",
+      details: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
 });
 
 app.get("/image/bulk", authMiddleware, async (req, res) => {
-  const ids = req.query.ids as string[];
-  const limit = (req.query.limit as string) ?? "100";
-  const offset = (req.query.offset as string) ?? "0";
-
-  const imagesData = await prismaClient.outputImages.findMany({
-    where: {
-      id: { in: ids },
-      userId: req.userId!,
-      status: {
-        not: "Failed",
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    skip: parseInt(offset),
-    take: parseInt(limit),
-  });
-
-  res.json({
-    images: imagesData,
-  });
+  try {
+    const images = await prismaClient.outputImages.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ images });
+  } catch (error) {
+    console.error("Error fetching images:", error);
+    res.status(500).json({ error: "Failed to fetch images" });
+  }
 });
 
 app.get("/models", authMiddleware, async (req, res) => {
-  const models = await prismaClient.model.findMany({
-    where: {
-      OR: [{ userId: req.userId }, { open: true }],
-    },
-  });
-
-  res.json({
-    models,
-  });
+  try {
+    const models = await prismaClient.model.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ models });
+  } catch (error) {
+    console.error("Error fetching models:", error);
+    res.status(500).json({ error: "Failed to fetch models" });
+  }
 });
 
 app.get("/model/status/:modelId", authMiddleware, async (req, res) => {
@@ -342,11 +375,11 @@ app.get("/model/status/:modelId", authMiddleware, async (req, res) => {
 });
 
 app.use("/payment", paymentRoutes);
-app.use("/api/webhook", webhookRouter);
+app.use("/webhook", webhookRouter);
 
 // Check database connection before starting the server
 checkDatabaseConnection();
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlanType {
+  BASIC
+  PREMIUM
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  credits   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  subscriptions Subscription[]
+}
+
+model Transaction {
+  id        String           @id @default(cuid())
+  userId    String
+  amount    Float
+  currency  String
+  status    TransactionStatus
+  plan      PlanType
+  paymentId String?
+  orderId   String
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Subscription {
+  id        String            @id @default(cuid())
+  userId    String
+  plan      PlanType
+  status    SubscriptionStatus
+  startDate DateTime
+  endDate   DateTime
+  paymentId String
+  orderId   String
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+} 

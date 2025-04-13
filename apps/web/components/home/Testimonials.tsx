@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Star } from "lucide-react";
+import { Star, User } from "lucide-react";
 import { testimonials } from "./data";
 
 export function Testimonials() {
@@ -26,12 +26,16 @@ export function Testimonials() {
             className="p-6 rounded-2xl bg-white/5 backdrop-blur-sm relative border border-muted-foreground/10 group dark:hover:bg-white/10 hover:bg-pink-50 transition-all duration-300"
           >
             <div className="absolute -top-6 left-6">
-              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-500">
-                <img
-                  src={testimonial.avatar}
-                  alt={testimonial.author}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-500 bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                {testimonial.avatar ? (
+                  <img
+                    src={testimonial.avatar}
+                    alt={testimonial.author}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-6 h-6 text-purple-500" />
+                )}
               </div>
             </div>
             <Star className="absolute top-4 right-4 text-yellow-500 w-6 h-6" />

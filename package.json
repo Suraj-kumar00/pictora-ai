@@ -1,5 +1,5 @@
 {
-  "name": "photo-ai",
+  "name": "pictora-ai",
   "private": true,
   "scripts": {
     "build": "turbo build",

@@ -68,12 +68,17 @@ model OutputImages {
 }
 
 model Packs {
-  id        String   @id @default(uuid())
-  name      String
-  description String @default("")
-  imageUrl1    String @default("")
-  imageUrl2    String @default("")
-  prompts   PackPrompts[]
+  id          String   @id @default(uuid())
+  name        String
+  description String   @default("")
+  imageUrl1   String   @default("")
+  imageUrl2   String   @default("")
+  imageUrl3   String?
+  imageUrl4   String?
+  category    String?
+  imagesCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  prompts     PackPrompts[]
 }
 
 model PackPrompts {

@@ -1,12 +1,9 @@
 import { useState } from "react";
-import { loadStripe } from "@stripe/stripe-js";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { BACKEND_URL } from "@/app/config";
-import { RazorpayResponse } from "@/types";
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_KEY!);
 const apiUrl = BACKEND_URL;
 
 // Create an event bus for credit updates
@@ -16,46 +13,91 @@ export function usePayment() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const { getToken } = useAuth();
+  const router = useRouter();
 
-  const handlePayment = async (plan: any) => {
+  const handlePayment = async (plan: "basic" | "premium") => {
     try {
+      setIsLoading(true);
       const token = await getToken();
       if (!token) {
         throw new Error("Authentication required");
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/payment/create`, {
+      const response = await fetch(`${apiUrl}/payment/create-order`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan, method: "stripe" }),
+        body: JSON.stringify({ planType: plan }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create payment session");
+        throw new Error(errorData.error || "Failed to create payment order");
       }
 
-      const { sessionId, url } = await response.json();
+      const { orderId, amount, currency, key } = await response.json();
 
-      if (url) {
-        window.location.href = url;
-      } else {
-        const stripe = await stripePromise;
-        if (!stripe) {
-          throw new Error("Stripe failed to initialize");
-        }
+      // Load Razorpay script
+      await loadRazorpayScript();
 
-        const { error } = await stripe.redirectToCheckout({
-          sessionId,
-        });
+      const options = {
+        key,
+        amount,
+        currency,
+        name: "Pictora AI",
+        description: `Purchase ${plan} plan`,
+        order_id: orderId,
+        handler: async function (response: any) {
+          try {
+            const verifyResponse = await fetch(`${apiUrl}/payment/verify-payment`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature,
+              }),
+            });
 
-        if (error) {
-          throw error;
-        }
-      }
+            if (!verifyResponse.ok) {
+              throw new Error("Payment verification failed");
+            }
+
+            toast({
+              title: "Payment Successful",
+              description: "Your credits have been added to your account",
+            });
+
+            // Dispatch credit update event
+            creditUpdateEvent.dispatchEvent(new Event("creditsUpdated"));
+
+            // Refresh the page to update credits
+            router.refresh();
+          } catch (error) {
+            console.error("Payment verification error:", error);
+            toast({
+              title: "Payment Verification Failed",
+              description: "Please contact support if the issue persists",
+              variant: "destructive",
+            });
+          }
+        },
+        prefill: {
+          name: "User",
+          email: "user@example.com",
+        },
+        theme: {
+          color: "#6366f1",
+        },
+      };
+
+      const razorpay = new (window as any).Razorpay(options);
+      razorpay.open();
     } catch (error) {
       console.error("Payment error:", error);
       toast({
@@ -63,11 +105,12 @@ export function usePayment() {
         description: error instanceof Error ? error.message : "An error occurred during payment",
         variant: "destructive",
       });
-      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  return { handlePayment };
+  return { handlePayment, isLoading };
 }
 
 // Helper function to load Razorpay SDK

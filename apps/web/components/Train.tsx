@@ -179,17 +179,14 @@ export function Train() {
   };
 
   const handleUpload = async (files: File[]) => {
-    if (files.length > 50) {
-      toast.error("Maximum 50 images allowed");
-      return;
-    }
-
     setIsUploading(true);
     setUploadProgress(0);
-    setPreviewFiles(files);
 
     try {
-      const res = await axios.get(`${BACKEND_URL}/pre-signed-url`);
+      const token = await getToken();
+      const res = await axios.get(`${BACKEND_URL}/pre-signed-url`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const { url, key } = res.data;
 
       const zip = new JSZip();
@@ -206,7 +203,12 @@ export function Train() {
       await axios.put(url, content, {
         headers: {
           "Content-Type": "application/zip",
+          "x-amz-acl": "public-read",
+          "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
         },
+        withCredentials: false,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
         onUploadProgress: (progressEvent) => {
           setUploadProgress(
             50 + Math.round((progressEvent.loaded * 50) / progressEvent.total!)
@@ -230,7 +232,11 @@ export function Train() {
       toast.success("Images uploaded successfully!");
     } catch (error) {
       console.error("Upload failed:", error);
-      toast.error("Failed to upload images. Please try again.");
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.error || "Failed to upload images. Please try again.");
+      } else {
+        toast.error("Failed to upload images. Please try again.");
+      }
     } finally {
       setIsUploading(false);
       setUploadProgress(0);

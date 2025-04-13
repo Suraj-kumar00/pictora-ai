@@ -30,23 +30,20 @@ export const testimonials = [
     text: "The quality of these AI portraits is absolutely incredible. They look better than my professional headshots!",
     author: "Suraj",
     role: "Cloud/DevOps Engineer",
-    avatar:
-      "",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&auto=format"
   },
   {
     text: "We used this for our family portraits and the results were stunning. So much easier than a traditional photoshoot.",
     author: "Mahesh",
     role: "Developer",
-    avatar:
-      "",
+    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&auto=format"
   },
   {
     text: "Game-changer for my professional brand. The variety of styles and quick delivery is unmatched.",
     author: "Ujjawal Bhardwaj",
     role: "Frontend Developer",
-    avatar:
-      "",
-  },
+    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&auto=format"
+  }
 ];
 
 export const carouselImages = [
