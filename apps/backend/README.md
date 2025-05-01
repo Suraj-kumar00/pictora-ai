@@ -17,9 +17,9 @@ The Node.js backend service for Pictora AI - an AI-powered image generation plat
 - Node.js with TypeScript
 - Express.js
 - Prisma ORM
-- FalAI Client
+- Replicate Client
 - S3 Storage
-- Stripe/Razorpay Integration
+- Razorpay Integration
 - Clerk Authentication
 
 ## Environment Variables
@@ -28,7 +28,7 @@ Create a `.env` file:
 
 ```bash
 # AI Service
-FAL_KEY=your_fal_ai_key
+REPLICATE_API_KEY=you-replicate-api-key
 
 # Storage
 S3_ACCESS_KEY=your_s3_access_key
@@ -139,4 +139,4 @@ docker run -p 8080:8080 \
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
