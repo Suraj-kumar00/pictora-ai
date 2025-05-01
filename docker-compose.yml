@@ -2,12 +2,9 @@ services:
   postgres:
     image: postgres:14
     ports:
-      - 5432:5432
+      - 5433:5432
     restart: always
-    environment:
-      - POSTGRES_PASSWORD=mypassword
-      - POSTGRES_USER=myuser
-      - POSTGRES_HOST_AUTH_METHOD=trust
+    env_file: .env
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,19 +13,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - pictora-network
 
   backend:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
     restart: always
-    container_name: backend-service
+    container_name: pictora-backend
     ports:
       - 8000:8000
     env_file: .env
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://myuser:mypassword@postgres:5432/pictoraai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
@@ -38,28 +36,41 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    command: >
+      bash -c "apt-get update && 
+      apt-get install -y openssl curl &&
+      bun start:backend"
+    networks:
+      - pictora-network
 
   web:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
     restart: always
-    container_name: frontend-service
+    container_name: pictora-frontend
     ports:
       - 3000:3000
     env_file: .env
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+      - PORT=3000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 40s
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - pictora-network
+
+networks:
+  pictora-network:
+    driver: bridge
 
 volumes:
   pgdata:

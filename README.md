@@ -1,4 +1,8 @@
-# The AI Photo Generator SaaS product
+<h1 align="center">Pictora AI - Photo Generator</h1>
+
+<p align="center">
+  <img src="./apps/web/public/favicon.svg" alt="Pictora Logo" width="200"/>
+</p>
 
 Pictora AI is a powerful AI image platform that lets you generate stunning images and train custom AI models. Built with cutting-edge technology, it enables users to create unique AI-generated artwork and train personalized models on their own image datasets. Whether you're an artist looking to expand your creative possibilities or a developer building AI-powered image applications, Pictora AI provides an intuitive interface and robust capabilities for AI image generation and model training.
 

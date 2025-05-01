@@ -1,53 +1,18 @@
-# Build stage
-FROM oven/bun:1 AS builder
+FROM oven/bun:1
 
-WORKDIR /app
+WORKDIR /usr/src/app
 
-# Install OpenSSL for Prisma
-RUN apt-get update -y && apt-get install -y openssl
+COPY package.json bun.lockb ./
 
-# Copy root config and lockfiles
-COPY package.json bun.lockb turbo.json ./
+RUN bun install
 
-# Copy the entire monorepo structure early so workspace dependencies can be resolved
-COPY packages ./packages
-COPY apps ./apps
-
-# Install dependencies (now that all workspace packages are present)
-RUN bun install --trust
-
-# Copy any remaining files (e.g., scripts, configs, prisma schemas if outside packages)
 COPY . .
 
-# Generate Prisma client
+
+RUN bunx turbo build --filter=backend...
 RUN bun run generate:db
 
-# Build the backend using Turbo
-RUN bunx turbo build --filter=backend...
+EXPOSE 8080
 
-# Production stage
-FROM oven/bun:1 AS runner
-
-WORKDIR /app
-
-# Install OpenSSL for Prisma in production stage and curl for healthcheck
-RUN apt-get update -y && apt-get install -y openssl curl
-
-# Set NODE_ENV for production
-ENV NODE_ENV=production
-
-# Copy necessary files from builder
-COPY --from=builder /app/package.json /app/bun.lockb ./
-COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/apps/backend ./apps/backend
-COPY --from=builder /app/node_modules ./node_modules
-
-# Expose backend port
-EXPOSE 8000
-
-# Healthcheck to verify backend is up
-HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=5 \
-CMD curl -f http://localhost:8000/api/health || exit 1
-
-# Start the backend service
+# Start the backend application
 CMD ["bun", "start:backend"]

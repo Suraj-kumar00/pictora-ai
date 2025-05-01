@@ -28,30 +28,27 @@ export const features = [
 export const testimonials = [
   {
     text: "The quality of these AI portraits is absolutely incredible. They look better than my professional headshots!",
-    author: "Harkirat Singh",
-    role: "Founder",
-    avatar:
-      "https://pbs.twimg.com/profile_images/1599003507415166977/pRYwiTo3_400x400.jpg",
+    author: "Suraj",
+    role: "Cloud/DevOps Engineer",
+    avatar: "/Suraj.jpeg",
   },
   {
     text: "We used this for our family portraits and the results were stunning. So much easier than a traditional photoshoot.",
-    author: "Yash Makhija",
+    author: "Mahesh Kumar",
     role: "Developer",
-    avatar:
-      "https://i.ibb.co/ZpvLpgf8/Whats-App-Image-2024-12-08-at-01-17-05.jpg",
+    avatar: "Mahesh-Kumar.jpeg",
   },
   {
     text: "Game-changer for my professional brand. The variety of styles and quick delivery is unmatched.",
-    author: "Sargam Poduel",
-    role: "Founder of WebCraft",
-    avatar:
-      "https://media.licdn.com/dms/image/v2/D5603AQH9LnII_HXrHQ/profile-displayphoto-shrink_200_200/profile-displayphoto-shrink_200_200/0/1698821079941?e=2147483647&v=beta&t=1XGvRit2_LVRAtb-8y_e9mbtqXF102Ia_fX88-OvEI0",
+    author: "Ujjawal Bhardwaj",
+    role: "Developer",
+    avatar: "/Ujjawal-Bhardwaj.jpeg",
   },
 ];
 
 export const carouselImages = [
   {
-    url: "https://r2-us-west.pictora.ai/1739277231-0b2465581e9551abecd467b163d0d48a-1.png",
+    url: "https://r2-us-west.pictora.ai/1739273789-920e7410ef180855f9a5718d1e37eb3a-1.png",
     title: "Professional Portrait",
     description: "Perfect for LinkedIn and business profiles",
     style: "Corporate",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import axios from "axios";
@@ -15,13 +15,20 @@ import { useRouter } from "next/navigation";
 import CustomLabel from "./ui/customLabel";
 import { GlowEffect } from "./GlowEffect";
 
-export function GenerateImage() {
+export function GenerateImage({ defaultModelId }: { defaultModelId?: string }) {
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>();
   const [isGenerating, setIsGenerating] = useState(false);
   const { getToken } = useAuth();
   const { credits } = useCredits();
   const router = useRouter();
+
+  // Set the default model ID if provided
+  useEffect(() => {
+    if (defaultModelId) {
+      setSelectedModel(defaultModelId);
+    }
+  }, [defaultModelId]);
 
   const handleGenerate = async () => {
     if (!prompt || !selectedModel) return;
@@ -62,10 +69,13 @@ export function GenerateImage() {
       transition={{ duration: 0.5 }}
     >
       <div className="space-y-4">
-        <SelectModel
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-        />
+        {/* Only show model selection if no default model is provided */}
+        {!defaultModelId && (
+          <SelectModel
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+          />
+        )}
 
         <motion.div
           initial={{ opacity: 0 }}
@@ -76,6 +86,7 @@ export function GenerateImage() {
           <CustomLabel label="Enter your prompt here..." />
           <Textarea
             className="w-full min-h-24"
+            value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
         </motion.div>
@@ -88,7 +99,7 @@ export function GenerateImage() {
               variant={"outline"}
               className="relative z-20 cursor-pointer"
             >
-              Generate Image <Sparkles size={24} />
+              {isGenerating ? "Generating..." : "Generate Image"} <Sparkles size={24} />
             </Button>
             {(prompt && selectedModel) && (
               <GlowEffect

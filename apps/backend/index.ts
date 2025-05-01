@@ -106,8 +106,19 @@ app.post("/ai/training", authMiddleware, async (req, res) => {
     
     console.log("Input validation successful, proceeding with training");
     
-    // Check if the user has enough credits here
-    // You would need to implement this based on your credit system
+    // Check if the user has enough credits
+    const userCredits = await prismaClient.userCredit.findUnique({
+      where: {
+        userId: req.userId!,
+      },
+    });
+
+    if ((userCredits?.amount ?? 0) < TRAIN_MODEL_CREDITS) {
+      res.status(411).json({
+        message: "Not enough credits",
+      });
+      return;
+    }
     
     try {
       const { request_id, response_url } = await replicateModel.trainModel(
@@ -131,8 +142,19 @@ app.post("/ai/training", authMiddleware, async (req, res) => {
           replicateRequestId: request_id
         }
       });
+      
+      // Deduct credits immediately when training starts
+      await prismaClient.userCredit.update({
+        where: {
+          userId: req.userId!,
+        },
+        data: {
+          amount: { decrement: TRAIN_MODEL_CREDITS },
+        },
+      });
   
       console.log("Model record created with ID:", data.id);
+      console.log(`Deducted ${TRAIN_MODEL_CREDITS} credits from user ${req.userId}`);
       
       res.json({
         modelId: data.id
@@ -157,11 +179,28 @@ app.post("/ai/training", authMiddleware, async (req, res) => {
               bald: parsedBody.data.bald,
               userId: req.userId!,
               zipUrl: parsedBody.data.zipUrl,
-              replicateRequestId: mockRequestId
+              replicateRequestId: mockRequestId,
+              // Set this to Generated in development mode for immediate use
+              trainingStatus: "Generated",
+              // Use a placeholder tensor path
+              tensorPath: "https://replicate.delivery/pbxt/AYgkdPuQBdi6GqjuioFQy1bP3rBHphZVK4uFMCn5ZRy6AjDh/model.safetensors",
+              // Use a placeholder thumbnail
+              thumbnail: "https://replicate.delivery/pbxt/FeNZUBbDXTpZOa2JhzxoOfUkWXUwoUQqACnqJTAXzJKmyexHB/out.png"
             }
           });
           
+          // Deduct credits immediately even in development mode
+          await prismaClient.userCredit.update({
+            where: {
+              userId: req.userId!,
+            },
+            data: {
+              amount: { decrement: TRAIN_MODEL_CREDITS },
+            },
+          });
+          
           console.log("Mock model record created with ID:", data.id);
+          console.log(`Deducted ${TRAIN_MODEL_CREDITS} credits from user ${req.userId}`);
           
           res.json({
             modelId: data.id,
@@ -433,23 +472,6 @@ app.post("/replicate/webhook/train", async (req, res) => {
 
       console.log("Using lora URL:", loraUrl);
 
-      // check if the user has enough credits
-      const credits = await prismaClient.userCredit.findUnique({
-        where: {
-          userId: model.userId,
-        },
-      });
-
-      console.log("User credits:", credits);
-
-      if ((credits?.amount ?? 0) < TRAIN_MODEL_CREDITS) {
-        console.error("Not enough credits for user:", model.userId);
-        res.status(411).json({
-          message: "Not enough credits",
-        });
-        return;
-      }
-
       console.log("Generating preview image with lora URL:", loraUrl);
       const { imageUrl } = await replicateModel.generateImageSync(loraUrl);
 
@@ -466,6 +488,8 @@ app.post("/replicate/webhook/train", async (req, res) => {
         },
       });
 
+      // We already deducted credits at submission time
+      /*
       await prismaClient.userCredit.update({
         where: {
           userId: model.userId,
@@ -479,6 +503,7 @@ app.post("/replicate/webhook/train", async (req, res) => {
         "Updated model and decremented credits for user:",
         model.userId
       );
+      */
     } catch (error) {
       console.error("Error processing webhook:", error);
       await prismaClient.model.updateMany({

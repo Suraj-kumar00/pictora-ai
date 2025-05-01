@@ -118,8 +118,12 @@ export const usePayment = () => {
               
               console.log("Payment verified:", verifyResponse.data);
               
-              // Dispatch credit update event
-              creditUpdateEvent.dispatchEvent(new CustomEvent('update'));
+              // Dispatch credit update event with the new credit value
+              if (verifyResponse.data && verifyResponse.data.credits) {
+                creditUpdateEvent.dispatchEvent(new CustomEvent('creditUpdate', {
+                  detail: verifyResponse.data.credits
+                }));
+              }
               
               alert("Payment successful! Credits added to your account.");
               router.push('/dashboard');

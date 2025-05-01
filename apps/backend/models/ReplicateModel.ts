@@ -140,7 +140,7 @@ export class ReplicateModel {
       console.log("Generating image synchronously with tensorPath:", tensorPath);
       
       // For development/testing if needed
-      if (process.env.NODE_ENV === 'development' && process.env.MOCK_REPLICATE === 'true') {
+      if (process.env.NODE_ENV === 'development') {
         console.log("Using mock image generation for development");
         return {
           imageUrl: "https://replicate.delivery/pbxt/FeNZUBbDXTpZOa2JhzxoOfUkWXUwoUQqACnqJTAXzJKmyexHB/out.png"

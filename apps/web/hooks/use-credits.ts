@@ -15,7 +15,7 @@ export function useCredits() {
           const token = await getToken();
           if (!token) return;
     
-          const response = await fetch(`${baseurl}/payment/credits`, {
+          const response = await fetch(`${baseurl}/api/payments/credits`, {
             headers: {
               Authorization: `Bearer ${token}`,
             },

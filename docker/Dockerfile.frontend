@@ -1,52 +1,24 @@
-# Build stage
-FROM node:20 AS builder
+FROM oven/bun:1
 
-WORKDIR /app
+# Declare build-time variables
+# ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+# ARG NEXT_PUBLIC_BACKEND_URL
+# ARG NEXT_PUBLIC_STRIPE_KEY
 
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/bun && \
-    bun --version
+WORKDIR /usr/src/app
 
-# Ensure bunx is available
-RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
+COPY . .
 
-# Copy core monorepo files
-COPY package.json bun.lockb turbo.json ./
-
-# Ensure bun.lockb is up-to-date and installed
 RUN bun install
+RUN bunx turbo build --filter=web...
 
-# Copy entire packages and apps folders for local/internal packages
-COPY packages ./packages
-COPY apps/web ./apps/web
 
-# Install dependencies again to ensure all packages are installed after copying
-RUN bun install
-
-# Install @clerk/nextjs explicitly
-RUN cd apps/web && bun add @clerk/nextjs
-
-# Build your web app using Turbo
-RUN bun turbo build --filter=web...
-
-# Production stage
-FROM oven/bun:1 AS runner
-
-WORKDIR /app
+# Inject build-time env variables for build step
+# RUN NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+#     NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL \
+#     NEXT_PUBLIC_STRIPE_KEY=$NEXT_PUBLIC_STRIPE_KEY \
 ENV NODE_ENV=production
-
-# Copy required files and folders from build stage
-COPY --from=builder /app/package.json /app/bun.lockb ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/apps/web ./apps/web
 
 EXPOSE 3000
 
-# Optional healthcheck
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD bunx --bun curl -f http://localhost:3000/api/health || exit 1
-
-# Start the web app
 CMD ["bun", "start:web"]
