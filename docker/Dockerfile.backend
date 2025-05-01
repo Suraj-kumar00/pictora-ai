@@ -2,17 +2,20 @@ FROM oven/bun:1
 
 WORKDIR /usr/src/app
 
-COPY package.json bun.lockb ./
-
-RUN bun install
-
+# Copy entire project for turbo monorepo
 COPY . .
 
+# Install dependencies
+RUN bun install
 
+# Set environment for production
+ENV NODE_ENV=production
+
+# Build backend and generate database
 RUN bunx turbo build --filter=backend...
 RUN bun run generate:db
 
 EXPOSE 8080
 
 # Start the backend application
-CMD ["bun", "start:backend"]
+CMD ["bun", "run", "--cwd", "apps/backend", "start"]

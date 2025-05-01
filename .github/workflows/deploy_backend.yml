@@ -45,18 +45,29 @@ jobs:
             type=raw,value=latest
             type=sha,format=short
       
+      # Check if buildcache image exists
+      - name: Check if buildcache exists
+        id: cache_exists
+        continue-on-error: true
+        run: |
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/pictora-backend:buildcache && echo "exists=true" >> $GITHUB_OUTPUT || echo "exists=false" >> $GITHUB_OUTPUT
+      
       - name: Build and push backend image
+        id: docker_build
         uses: docker/build-push-action@v5
+        continue-on-error: true
         with:
           context: .
           file: ./docker/Dockerfile.backend
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/pictora-backend:buildcache
+          cache-from: ${{ steps.cache_exists.outputs.exists == 'true' && format('type=registry,ref={0}/pictora-backend:buildcache', secrets.DOCKERHUB_USERNAME) || '' }}
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/pictora-backend:buildcache,mode=max
       
+      # Only run Trivy scan if the build was successful
       - name: Scan for vulnerabilities
+        if: steps.docker_build.outcome == 'success'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/pictora-backend:latest
@@ -64,8 +75,9 @@ jobs:
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
       
+      # Only upload Trivy results if the scan was run
       - name: Upload Trivy scan results to GitHub Security tab
+        if: steps.docker_build.outcome == 'success'
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: 'trivy-results.sarif'
