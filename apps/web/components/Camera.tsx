@@ -42,48 +42,87 @@ export function Camera() {
   };
 
   const fetchImages = async () => {
+    setImagesLoading(true);
     try {
       const token = await getToken();
-      
-      // For development environment, use mock data if the backend is not responding
-      if (process.env.NODE_ENV === 'development' && (token === 'dev-token-for-testing' || !token)) {
-        console.log("Using mock image data in development");
-        setImages([
-          // Add some mock image data here for development
-          {
-            id: 'mock1', imageUrl: 'https://via.placeholder.com/300', prompt: 'Mock image 1', createdAt: new Date().toISOString(),
-            modelId: "",
-            userId: "",
-            falAiRequestId: "",
-            status: "",
-            updatedAt: ""
-          },
-          {
-            id: 'mock2', imageUrl: 'https://via.placeholder.com/300', prompt: 'Mock image 2', createdAt: new Date().toISOString(),
-            modelId: "",
-            userId: "",
-            falAiRequestId: "",
-            status: "",
-            updatedAt: ""
-          }
-        ]);
+
+      // If no token is available, handle accordingly
+      if (!token) {
+        console.log("No authentication token available");
+        // Use mock images in development, empty in production
+        if (process.env.NODE_ENV === "development") {
+          console.log("Using mock image data in development");
+          setImages([
+            {
+              id: "mock1",
+              imageUrl: "https://source.unsplash.com/random/300x300?portrait",
+              prompt: "Professional headshot with a neutral background",
+              createdAt: new Date().toISOString(),
+              modelId: "mock-model-1",
+              userId: "user-123",
+              falAiRequestId: "mock-request-1",
+              status: "completed",
+              updatedAt: new Date().toISOString(),
+            },
+            {
+              id: "mock2",
+              imageUrl: "https://source.unsplash.com/random/300x300?landscape",
+              prompt: "Beautiful landscape with mountains and lakes",
+              createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+              modelId: "mock-model-2",
+              userId: "user-123",
+              falAiRequestId: "mock-request-2",
+              status: "completed",
+              updatedAt: new Date(Date.now() - 86400000).toISOString(),
+            },
+            {
+              id: "mock3",
+              imageUrl: "https://source.unsplash.com/random/300x300?cityscape",
+              prompt: "Cityscape at night with neon lights",
+              createdAt: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+              modelId: "mock-model-3",
+              userId: "user-123",
+              falAiRequestId: "mock-request-3",
+              status: "completed",
+              updatedAt: new Date(Date.now() - 172800000).toISOString(),
+            },
+          ]);
+        } else {
+          setImages([]);
+        }
+        setImagesLoading(false);
         return;
       }
-      
+
       const response = await axios.get(`${BACKEND_URL}/image/bulk`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setImages(response.data.images);
+
+      if (response.data && Array.isArray(response.data.images)) {
+        setImages(response.data.images);
+      } else {
+        console.error("Invalid response format:", response.data);
+        setImages([]);
+      }
+      setImagesLoading(false);
     } catch (error) {
       console.error("Error fetching images:", error);
       // Provide empty array on error so UI doesn't break
       setImages([]);
+      setImagesLoading(false);
     }
   };
 
   useEffect(() => {
     fetchImages();
-  }, []);
+    // Set up a refresh interval (optional)
+    const intervalId = setInterval(() => {
+      fetchImages();
+    }, 60000); // Refresh every minute
+
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [getToken]); // Add getToken as dependency
 
   const handleImageClick = (image: TImage, index: number) => {
     setSelectedImage(image);
@@ -126,27 +165,33 @@ export function Camera() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Your Gallery</h2>
         <span className="text-xs select-none bg-secondary/40 font-semibold border border-secondary text-muted-foreground px-2 py-1 rounded-full">
-          {images.length} images
+          {imagesLoading ? "Loading..." : `${images.length} images`}
         </span>
       </div>
 
       <motion.div
-        className="columns-1 md:columns-3 lg:columns-3 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
         {imagesLoading
-          ? [...Array(8)].map((_, i) => (
+          ? [...Array(6)].map((_, i) => (
               <motion.div
                 key={i}
-                className="bg-neutral-300 h-48 rounded-lg animate-pulse"
+                className="bg-neutral-300 dark:bg-neutral-800 aspect-square rounded-lg animate-pulse"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3, delay: i * 0.05 }}
               />
             ))
           : images.map((image, index) => (
-              <div
-                key={image.id +index}
-                className="cursor-pointer transition-transform mb-4 hover:scale-[1.02]"
+              <motion.div
+                key={image.id + index}
+                className="cursor-pointer transition-transform hover:scale-[1.02]"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
                 onClick={() => handleImageClick(image, index)}
               >
                 <ImageCard
@@ -161,7 +206,7 @@ export function Camera() {
                   createdAt={image.createdAt}
                   updatedAt={image.updatedAt}
                 />
-              </div>
+              </motion.div>
             ))}
       </motion.div>
 
