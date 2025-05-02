@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { UploadModal } from "@/components/ui/upload";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { BACKEND_URL, CLOUDFLARE_URL } from "@/app/config";
+import { BACKEND_URL, S3_URL } from "@/app/config";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import toast from "react-hot-toast";
@@ -111,7 +111,7 @@ export function Train() {
   const trainModal = async () => {
     try {
       setModelTraining(true);
-      
+
       // Create the input object with all the form data
       const input = {
         name,
@@ -120,9 +120,9 @@ export function Train() {
         ethinicity,
         eyeColor,
         bald,
-        zipUrl
+        zipUrl,
       };
-      
+
       // Get the authentication token
       const token = await getToken();
       if (!token) {
@@ -130,42 +130,45 @@ export function Train() {
         setModelTraining(false);
         return;
       }
-      
+
       console.log("Submitting training request with data:", input);
-      
+
       // Add a delay for development mode to make sure the backend is ready
-      if (process.env.NODE_ENV === 'development') {
-        await new Promise(resolve => setTimeout(resolve, 500));
+      if (process.env.NODE_ENV === "development") {
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
-      
+
       // Make the API call with better error handling
       try {
         const response = await axios.post(`${BACKEND_URL}/ai/training`, input, {
-          headers: { 
+          headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json",
           },
           validateStatus: (status) => status < 500, // Don't reject on 4xx errors (we'll handle them)
         });
-        
+
         console.log("Training response:", response.data);
-        
+
         if (response.status >= 400) {
-          throw new Error(response.data.message || `Request failed with status ${response.status}`);
+          throw new Error(
+            response.data.message ||
+              `Request failed with status ${response.status}`
+          );
         }
-        
+
         // Set the model ID for status tracking
         setModelId(response.data.modelId);
-        
+
         // Handle success
         toast.success("Your model is now training. This may take some time.");
-        
+
         // Redirect to model status page or dashboard
         router.push(`/model/${response.data.modelId}`);
       } catch (apiError: any) {
         console.error("API Error:", apiError);
         let errorMessage = "Failed to start model training";
-        
+
         // Extract detailed error message if available
         if (apiError.response?.data?.message) {
           errorMessage = apiError.response.data.message;
@@ -174,7 +177,7 @@ export function Train() {
         } else if (apiError.message) {
           errorMessage = apiError.message;
         }
-        
+
         toast.error(errorMessage);
       }
     } catch (error: any) {
@@ -197,26 +200,25 @@ export function Train() {
   };
 
   const handleUpload = async (files: File[]) => {
-    if (files.length > 50) {
-      toast.error("Maximum 50 images allowed");
-      return;
-    }
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setUploadProgress(0);
     setPreviewFiles(files);
 
     try {
-      const res = await axios.get(`${BACKEND_URL}/pre-signed-url`);
-      const { url, key } = res.data;
+      const fileNames = files.map((file) => file.name);
 
+      // Get pre-signed URL from backend
+      const response = await axios.get(`${BACKEND_URL}/pre-signed-url`);
+      const { url, key } = response.data;
+
+      setUploadProgress(50);
+
+      // Create a zip file of all images
       const zip = new JSZip();
-      const fileNames: string[] = [];
-
       for (const file of files) {
-        zip.file(file.name, await file.arrayBuffer());
-        fileNames.push(file.name);
-        setUploadProgress((prev) => Math.min(prev + 50 / files.length, 50));
+        zip.file(file.name, file);
       }
 
       const content = await zip.generateAsync({ type: "blob" });
@@ -232,7 +234,8 @@ export function Train() {
         },
       });
 
-      const fullZipUrl = `${CLOUDFLARE_URL}/${key}`;
+      // Use S3 URL format for the ZIP file
+      const fullZipUrl = `${S3_URL}/${key}`;
       setZipUrl(fullZipUrl);
       setZipKey(key);
 

@@ -6,7 +6,7 @@ import {
 } from "common/types";
 import { prismaClient } from "db";
 import { S3Client } from "bun";
-import { ReplicateModel } from './models/ReplicateModel';
+import { ReplicateModel } from "./models/ReplicateModel";
 import cors from "cors";
 import { authMiddleware } from "./middleware";
 import dotenv from "dotenv";
@@ -36,37 +36,34 @@ app.use(
 app.use(express.json());
 
 // Register health check route
-app.use('/api/health', healthRoutes);
+app.use("/api/health", healthRoutes);
 
 app.get("/pre-signed-url", async (req, res) => {
   try {
-    const key = `models/${Date.now()}_${Math.random()}.zip`;
-    
+    // Generate a unique key for the ZIP file
+    const timestamp = Date.now();
+    const random = Math.random().toString().substring(2, 10);
+    const key = `models/${timestamp}_${random}.zip`;
+
     console.log("Generating pre-signed URL with:", {
       key,
       accessKey: process.env.S3_ACCESS_KEY ? "Set" : "Not set",
       secretKey: process.env.S3_SECRET_KEY ? "Set" : "Not set",
       endpoint: process.env.ENDPOINT,
-      bucket: process.env.BUCKET_NAME
+      bucket: process.env.BUCKET_NAME,
     });
-    
+
     // Verify we have all required credentials
-    if (!process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.ENDPOINT || !process.env.BUCKET_NAME) {
+    if (
+      !process.env.S3_ACCESS_KEY ||
+      !process.env.S3_SECRET_KEY ||
+      !process.env.ENDPOINT ||
+      !process.env.BUCKET_NAME
+    ) {
       console.error("Missing S3 credentials");
-      
-      // In development mode, return a mock URL
-      if (process.env.NODE_ENV === 'development') {
-        console.log("In development mode: Returning mock pre-signed URL");
-        res.json({
-          url: "https://example.com/mock-upload-url",
-          key: key
-        });
-        return;
-      } else {
-        throw new Error("Missing required S3 credentials");
-      }
+      throw new Error("Missing required S3 credentials");
     }
-    
+
     const url = S3Client.presign(key, {
       method: "PUT",
       accessKeyId: process.env.S3_ACCESS_KEY,
@@ -85,27 +82,30 @@ app.get("/pre-signed-url", async (req, res) => {
     console.error("Error generating pre-signed URL:", error);
     res.status(500).json({
       message: "Failed to generate pre-signed URL",
-      error: error instanceof Error ? error.message : "Unknown error"
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 });
 
 app.post("/ai/training", authMiddleware, async (req, res) => {
   try {
-    console.log("Received training request:", JSON.stringify(req.body, null, 2));
-    
+    console.log(
+      "Received training request:",
+      JSON.stringify(req.body, null, 2)
+    );
+
     const parsedBody = TrainModel.safeParse(req.body);
     if (!parsedBody.success) {
       console.error("Input validation failed:", parsedBody.error);
       res.status(411).json({
         message: "Input validation failed",
-        error: parsedBody.error
+        error: parsedBody.error,
       });
       return;
     }
-    
+
     console.log("Input validation successful, proceeding with training");
-    
+
     // Check if the user has enough credits
     const userCredits = await prismaClient.userCredit.findUnique({
       where: {
@@ -119,15 +119,18 @@ app.post("/ai/training", authMiddleware, async (req, res) => {
       });
       return;
     }
-    
+
     try {
       const { request_id, response_url } = await replicateModel.trainModel(
         parsedBody.data.zipUrl,
         parsedBody.data.name
       );
-      
-      console.log("Model training initiated successfully with request ID:", request_id);
-  
+
+      console.log(
+        "Model training initiated successfully with request ID:",
+        request_id
+      );
+
       // Create model record in database
       const data = await prismaClient.model.create({
         data: {
@@ -139,10 +142,10 @@ app.post("/ai/training", authMiddleware, async (req, res) => {
           bald: parsedBody.data.bald,
           userId: req.userId!,
           zipUrl: parsedBody.data.zipUrl,
-          replicateRequestId: request_id
-        }
+          replicateRequestId: request_id,
+        },
       });
-      
+
       // Deduct credits immediately when training starts
       await prismaClient.userCredit.update({
         where: {
@@ -152,76 +155,30 @@ app.post("/ai/training", authMiddleware, async (req, res) => {
           amount: { decrement: TRAIN_MODEL_CREDITS },
         },
       });
-  
+
       console.log("Model record created with ID:", data.id);
-      console.log(`Deducted ${TRAIN_MODEL_CREDITS} credits from user ${req.userId}`);
-      
+      console.log(
+        `Deducted ${TRAIN_MODEL_CREDITS} credits from user ${req.userId}`
+      );
+
       res.json({
-        modelId: data.id
+        modelId: data.id,
       });
     } catch (trainingError) {
       console.error("Error in model training:", trainingError);
-      
-      // For development, we can still proceed with a mock response
-      if (process.env.NODE_ENV === 'development') {
-        console.log("In development mode: Creating a mock model record despite error");
-        
-        // Create model record in database with mock request ID
-        try {
-          const mockRequestId = `mock-error-${Date.now()}`;
-          const data = await prismaClient.model.create({
-            data: {
-              name: parsedBody.data.name,
-              type: parsedBody.data.type,
-              age: parsedBody.data.age,
-              ethinicity: parsedBody.data.ethinicity,
-              eyeColor: parsedBody.data.eyeColor,
-              bald: parsedBody.data.bald,
-              userId: req.userId!,
-              zipUrl: parsedBody.data.zipUrl,
-              replicateRequestId: mockRequestId,
-              // Set this to Generated in development mode for immediate use
-              trainingStatus: "Generated",
-              // Use a placeholder tensor path
-              tensorPath: "https://replicate.delivery/pbxt/AYgkdPuQBdi6GqjuioFQy1bP3rBHphZVK4uFMCn5ZRy6AjDh/model.safetensors",
-              // Use a placeholder thumbnail
-              thumbnail: "https://replicate.delivery/pbxt/FeNZUBbDXTpZOa2JhzxoOfUkWXUwoUQqACnqJTAXzJKmyexHB/out.png"
-            }
-          });
-          
-          // Deduct credits immediately even in development mode
-          await prismaClient.userCredit.update({
-            where: {
-              userId: req.userId!,
-            },
-            data: {
-              amount: { decrement: TRAIN_MODEL_CREDITS },
-            },
-          });
-          
-          console.log("Mock model record created with ID:", data.id);
-          console.log(`Deducted ${TRAIN_MODEL_CREDITS} credits from user ${req.userId}`);
-          
-          res.json({
-            modelId: data.id,
-            mock: true
-          });
-          return;
-        } catch (dbError) {
-          console.error("Error creating mock model record:", dbError);
-        }
-      }
-      
       res.status(500).json({
         message: "Model training failed",
-        error: trainingError instanceof Error ? trainingError.message : "Unknown error"
+        error:
+          trainingError instanceof Error
+            ? trainingError.message
+            : "Unknown error",
       });
     }
   } catch (error) {
     console.error("Error in /ai/training endpoint:", error);
     res.status(500).json({
       message: "Training failed",
-      error: error instanceof Error ? error.message : "Unknown error"
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 });
@@ -408,181 +365,193 @@ app.get("/models", authMiddleware, async (req, res) => {
   });
 });
 
-app.post("/replicate/webhook/train", async (req, res) => {
+// Webhook handler for model training
+app.post("/replicate/webhook/train", function (req, res) {
   console.log(
     "====================Received training webhook===================="
   );
   console.log("Received training webhook:", req.body);
-  
+
   // In Replicate's webhook, the id is typically in the body directly
   const requestId = req.body.id || req.body.request_id;
 
-  // First find the model to get the userId
-  const model = await prismaClient.model.findFirst({
-    where: {
-      replicateRequestId: requestId,
-    },
-  });
-
-  console.log("Found model:", model);
-
-  if (!model) {
-    console.error("No model found for requestId:", requestId);
-    res.status(404).json({ message: "Model not found" });
+  if (!requestId) {
+    console.error("No request ID found in webhook payload");
+    res.status(400).json({ error: "Missing request ID in webhook payload" });
     return;
   }
 
-  // Handle error case
-  if (req.body.status === "failed") {
-    console.error("Training error:", req.body.error);
-    await prismaClient.model.updateMany({
-      where: {
-        replicateRequestId: requestId,
-      },
-      data: {
-        trainingStatus: "Failed",
-      },
-    });
-
-    res.json({
-      message: "Error recorded",
-    });
-    return;
-  }
-
-  // Replicate status is "succeeded" when complete
-  if (req.body.status === "succeeded") {
+  // Process asynchronously to avoid webhook timeout
+  (async () => {
     try {
-      // Get the lora URL from output - Replicate format is different
-      let loraUrl;
-      
-      if (req.body.output && typeof req.body.output === 'string') {
-        // Sometimes output is a direct URL string
-        loraUrl = req.body.output;
-      } else if (req.body.output && req.body.output.lora_url) {
-        // Or it might be in an object
-        loraUrl = req.body.output.lora_url;
-      } else if (req.body.output && Array.isArray(req.body.output) && req.body.output.length > 0) {
-        // Or it might be the first item in an array
-        loraUrl = req.body.output[0];
-      } else {
-        console.error("Could not find lora URL in response:", req.body);
-        throw new Error("Lora URL not found in response");
+      // First find the model to get the userId
+      const model = await prismaClient.model.findFirst({
+        where: {
+          replicateRequestId: requestId,
+        },
+      });
+
+      console.log("Found model:", model);
+
+      if (!model) {
+        console.error("No model found for requestId:", requestId);
+        return;
       }
 
-      console.log("Using lora URL:", loraUrl);
+      // Handle error case
+      if (req.body.status === "failed") {
+        console.error("Training error:", req.body.error);
+        await prismaClient.model.updateMany({
+          where: {
+            replicateRequestId: requestId,
+          },
+          data: {
+            trainingStatus: "Failed",
+          },
+        });
+        return;
+      }
 
-      console.log("Generating preview image with lora URL:", loraUrl);
-      const { imageUrl } = await replicateModel.generateImageSync(loraUrl);
+      // Replicate status is "succeeded" when complete
+      if (req.body.status === "succeeded") {
+        try {
+          // Get the lora URL from output - Replicate format is different
+          let loraUrl;
 
-      console.log("Generated preview image:", imageUrl);
+          if (req.body.output && typeof req.body.output === "string") {
+            // Sometimes output is a direct URL string
+            loraUrl = req.body.output;
+          } else if (req.body.output && req.body.output.lora_url) {
+            // Or it might be in an object
+            loraUrl = req.body.output.lora_url;
+          } else if (
+            req.body.output &&
+            Array.isArray(req.body.output) &&
+            req.body.output.length > 0
+          ) {
+            // Or it might be the first item in an array
+            loraUrl = req.body.output[0];
+          } else {
+            console.error("Could not find lora URL in response:", req.body);
+            throw new Error("Lora URL not found in response");
+          }
 
-      await prismaClient.model.updateMany({
-        where: {
-          replicateRequestId: requestId,
-        },
-        data: {
-          trainingStatus: "Generated",
-          tensorPath: loraUrl,
-          thumbnail: imageUrl,
-        },
-      });
+          console.log("Using lora URL:", loraUrl);
 
-      // We already deducted credits at submission time
-      /*
-      await prismaClient.userCredit.update({
-        where: {
-          userId: model.userId,
-        },
-        data: {
-          amount: { decrement: TRAIN_MODEL_CREDITS },
-        },
-      });
+          console.log("Generating preview image with lora URL:", loraUrl);
+          const { imageUrl } = await replicateModel.generateImageSync(loraUrl);
 
-      console.log(
-        "Updated model and decremented credits for user:",
-        model.userId
-      );
-      */
+          console.log("Generated preview image:", imageUrl);
+
+          await prismaClient.model.updateMany({
+            where: {
+              replicateRequestId: requestId,
+            },
+            data: {
+              trainingStatus: "Generated",
+              tensorPath: loraUrl,
+              thumbnail: imageUrl,
+            },
+          });
+
+          // We already deducted credits at submission time
+        } catch (error) {
+          console.error("Error processing webhook:", error);
+          await prismaClient.model.updateMany({
+            where: {
+              replicateRequestId: requestId,
+            },
+            data: {
+              trainingStatus: "Failed",
+            },
+          });
+        }
+      } else if (req.body.status === "processing") {
+        // For any other status, keep it as Pending
+        console.log("Updating model status to: Pending");
+        await prismaClient.model.updateMany({
+          where: {
+            replicateRequestId: requestId,
+          },
+          data: {
+            trainingStatus: "Pending",
+          },
+        });
+      }
     } catch (error) {
-      console.error("Error processing webhook:", error);
-      await prismaClient.model.updateMany({
-        where: {
-          replicateRequestId: requestId,
-        },
-        data: {
-          trainingStatus: "Failed",
-        },
-      });
+      console.error("Error in webhook processing:", error);
     }
-  } else if (req.body.status === "processing") {
-    // For any other status, keep it as Pending
-    console.log("Updating model status to: Pending");
-    await prismaClient.model.updateMany({
-      where: {
-        replicateRequestId: requestId,
-      },
-      data: {
-        trainingStatus: "Pending",
-      },
-    });
-  }
+  })();
 
-  res.json({
-    message: "Webhook processed successfully",
-  });
+  // Always respond quickly to the webhook
+  res.json({ message: "Webhook received" });
+  return;
 });
 
-app.post("/replicate/webhook/image", async (req, res) => {
-  console.log("replicate/webhook/image");
-  console.log(req.body);
-  
+// Webhook handler for image generation
+app.post("/replicate/webhook/image", function (req, res) {
+  console.log("Received image webhook:", req.body);
+
   // Get the request ID from Replicate's webhook
   const requestId = req.body.id || req.body.request_id;
 
-  if (req.body.status === "failed") {
-    await prismaClient.outputImages.updateMany({
-      where: {
-        replicateRequestId: requestId,
-      },
-      data: {
-        status: "Failed",
-      },
-    });
-    
-    res.status(200).json({ message: "Failed status recorded" });
+  if (!requestId) {
+    console.error("No request ID found in webhook payload");
+    res.status(400).json({ error: "Missing request ID in webhook payload" });
     return;
   }
 
-  // Only update when succeeded
-  if (req.body.status === "succeeded") {
-    let imageUrl;
-    
-    // Handle different output formats
-    if (req.body.output && typeof req.body.output === 'string') {
-      imageUrl = req.body.output;
-    } else if (req.body.output && Array.isArray(req.body.output) && req.body.output.length > 0) {
-      imageUrl = req.body.output[0];
-    } else {
-      console.error("Could not find image URL in response:", req.body);
-      res.status(400).json({ error: "Image URL not found in response" });
-      return;
-    }
-    
-    await prismaClient.outputImages.updateMany({
-      where: {
-        replicateRequestId: requestId,
-      },
-      data: {
-        status: "Generated",
-        imageUrl: imageUrl,
-      },
-    });
-  }
+  // Process asynchronously to avoid webhook timeout
+  (async () => {
+    try {
+      if (req.body.status === "failed") {
+        await prismaClient.outputImages.updateMany({
+          where: {
+            replicateRequestId: requestId,
+          },
+          data: {
+            status: "Failed",
+          },
+        });
+        return;
+      }
 
-  res.json({
-    message: "Webhook received",
-  });
+      // Only update when succeeded
+      if (req.body.status === "succeeded") {
+        let imageUrl;
+
+        // Handle different output formats
+        if (req.body.output && typeof req.body.output === "string") {
+          imageUrl = req.body.output;
+        } else if (
+          req.body.output &&
+          Array.isArray(req.body.output) &&
+          req.body.output.length > 0
+        ) {
+          imageUrl = req.body.output[0];
+        } else {
+          console.error("Could not find image URL in response:", req.body);
+          return;
+        }
+
+        await prismaClient.outputImages.updateMany({
+          where: {
+            replicateRequestId: requestId,
+          },
+          data: {
+            status: "Generated",
+            imageUrl: imageUrl,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error processing image webhook:", error);
+    }
+  })();
+
+  // Always respond quickly to the webhook
+  res.json({ message: "Webhook received" });
+  return;
 });
 
 app.get("/model/status/:modelId", authMiddleware, async (req, res) => {
@@ -628,8 +597,8 @@ app.get("/model/status/:modelId", authMiddleware, async (req, res) => {
 });
 
 // Register other routes
-app.use('/api/payments', paymentRoutes);
-app.use('/api/webhooks', webhookRouter);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/webhooks", webhookRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
