@@ -1,7 +1,6 @@
 import Replicate from "replicate";
 import { BaseModel } from "./BaseModel";
 
-
 export class ReplicateModel {
   private replicate: Replicate;
 
@@ -12,24 +11,61 @@ export class ReplicateModel {
   }
 
   public async generateImage(prompt: string, tensorPath: string) {
-    console.log("Generating image with prompt:", prompt, "and tensorPath:", tensorPath);
-    
+    console.log(
+      "Generating image with prompt:",
+      prompt,
+      "and tensorPath:",
+      tensorPath
+    );
+
     try {
-      const prediction = await this.replicate.predictions.create({
-        version: "8ede8c08a677a46d24fdaaa6e0eaad6f0b5a2c7a684a0120009e96b3cdaaa33c",
+      // Prepare prediction configuration
+      const predictionConfig = {
+        version: "black-forest-labs/flux-1.1-pro-ultra",
         input: {
           prompt: prompt,
           lora_url: tensorPath,
           lora_scale: 1,
+          num_inference_steps: 28,
+          guidance_scale: 7.5,
         },
-        webhook: `${process.env.WEBHOOK_BASE_URL}/replicate/webhook/image`,
-        webhook_events_filter: ["completed"]
-      });
+      };
+
+      // Add webhook configuration for all environments using HTTPS
+      if (process.env.WEBHOOK_BASE_URL) {
+        let webhookUrl = process.env.WEBHOOK_BASE_URL;
+        // Make sure the webhook URL starts with https
+        if (webhookUrl.startsWith("http://")) {
+          webhookUrl = webhookUrl.replace("http://", "https://");
+        } else if (!webhookUrl.startsWith("https://")) {
+          webhookUrl = `https://${webhookUrl}`;
+        }
+
+        // Trim any trailing slash
+        webhookUrl = webhookUrl.replace(/\/+$/, "");
+
+        // Use any to bypass TypeScript type checking
+        (predictionConfig as any).webhook =
+          `${webhookUrl}/replicate/webhook/image`;
+        (predictionConfig as any).webhook_events_filter = ["completed"];
+
+        console.log("Using webhook URL:", (predictionConfig as any).webhook);
+      } else {
+        console.log(
+          "Warning: No webhook URL configured, using synchronous mode"
+        );
+      }
+
+      // Log the final configuration for debugging
+      console.log("Final prediction config:", predictionConfig);
+
+      const prediction =
+        await this.replicate.predictions.create(predictionConfig);
 
       console.log("Prediction created:", prediction.id);
       return {
         request_id: prediction.id,
-        response_url: prediction.urls.get
+        response_url: prediction.urls.get,
       };
     } catch (error) {
       console.error("Error generating image:", error);
@@ -41,146 +77,160 @@ export class ReplicateModel {
     console.log("Training model with URL:", zipUrl);
 
     try {
-      // First try to check if the ZIP URL is accessible
-      try {
-        console.log("Checking ZIP URL accessibility:", zipUrl);
-        const response = await fetch(zipUrl, { method: "HEAD" });
-        console.log("ZIP URL check response status:", response.status);
-        
-        if (!response.ok) {
-          console.error(
-            `ZIP URL not accessible: ${zipUrl}, status: ${response.status}`
-          );
-          
-          // For development mode, provide a fallback URL if the original is not accessible
-          if (process.env.NODE_ENV === 'development') {
-            console.log("In development mode: Using fallback training data URL");
-            // Use a placeholder/sample dataset URL that's publicly accessible
-            zipUrl = "https://replicate.delivery/pbxt/AYgkdPuQBdi6GqjuioFQy1bP3rBHphZVK4uFMCn5ZRy6AjDh/cifakes.zip";
-          } else {
+      // Check if it's an S3 URL (from AWS)
+      const isS3Url =
+        zipUrl.includes("s3.ap-south-1.amazonaws.com") ||
+        zipUrl.includes("pictora-ai-s3") ||
+        zipUrl.includes(process.env.BUCKET_NAME || "");
+
+      // Validate the URL is accessible
+      if (!isS3Url) {
+        try {
+          console.log("Validating ZIP URL accessibility:", zipUrl);
+          const response = await fetch(zipUrl, { method: "HEAD" });
+          console.log("ZIP URL check response status:", response.status);
+
+          if (!response.ok) {
+            console.error(
+              `ZIP URL not accessible: ${zipUrl}, status: ${response.status}`
+            );
             throw new Error(`ZIP URL not accessible: ${response.status}`);
           }
-        }
-      } catch (fetchError) {
-        console.error("Error checking ZIP URL:", fetchError);
-        
-        // For development mode, provide a fallback URL
-        if (process.env.NODE_ENV === 'development') {
-          console.log("In development mode: Using fallback training data URL after fetch error");
-          // Use a placeholder/sample dataset URL that's publicly accessible
-          zipUrl = "https://replicate.delivery/pbxt/AYgkdPuQBdi6GqjuioFQy1bP3rBHphZVK4uFMCn5ZRy6AjDh/cifakes.zip";
-        } else {
+        } catch (fetchError) {
+          console.error("Error checking ZIP URL:", fetchError);
           throw new Error(`ZIP URL validation failed: ${fetchError}`);
         }
+      } else {
+        console.log("S3 URL detected, skipping accessibility check:", zipUrl);
       }
 
-      // Now proceed with model training using the (potentially fallback) zipUrl
+      // Now proceed with model training
       console.log("Submitting model training with zipUrl:", zipUrl);
-      
+
       // Check if REPLICATE_API_TOKEN exists
       if (!process.env.REPLICATE_API_TOKEN) {
         console.error("REPLICATE_API_TOKEN is not set");
         throw new Error("Replicate API token is missing");
       }
-      
-      // In development, we can log more details for debugging
-      if (process.env.NODE_ENV === 'development') {
-        console.log("Replicate API config:", {
-          version: "8ede8c08a677a46d24fdaaa6e0eaad6f0b5a2c7a684a0120009e96b3cdaaa33c",
-          input: {
-            training_data: zipUrl,
-            trigger_word: triggerWord,
-          },
-          webhook: `${process.env.WEBHOOK_BASE_URL}/replicate/webhook/train`,
-        });
-      }
-      
-      // For development testing - if you want to skip the actual API call
-      if (process.env.NODE_ENV === 'development' && process.env.MOCK_REPLICATE === 'true') {
-        console.log("Using mock model training response for development");
-        return {
-          request_id: "mock-request-id-" + Date.now(),
-          response_url: "https://api.replicate.com/v1/predictions/mock-id"
-        };
-      }
-      
-      const prediction = await this.replicate.predictions.create({
-        version: "8ede8c08a677a46d24fdaaa6e0eaad6f0b5a2c7a684a0120009e96b3cdaaa33c",
-        input: {
-          training_data: zipUrl,
-          trigger_word: triggerWord,
-        },
-        webhook: `${process.env.WEBHOOK_BASE_URL}/replicate/webhook/train`,
-        webhook_events_filter: ["completed"]
-      });
 
-      console.log("Model training submitted successfully, prediction ID:", prediction.id);
+      // Prepare the prediction configuration
+      const predictionConfig = {
+        version:
+          "ostris/flux-dev-lora-trainer:4ffd32160efd92e956d39c5338a9b8fbafca58e03f791f6d8011f3e20e8ea6fa",
+        input: {
+          input_images: zipUrl,
+          trigger_word: triggerWord,
+          prompt: `A photo of ${triggerWord}`,
+          steps: 1000,
+          batch_size: 4,
+          learning_rate: 1e-4,
+          resolution: 1024,
+        },
+      };
+
+      // Add webhook configuration for all environments using HTTPS
+      if (process.env.WEBHOOK_BASE_URL) {
+        let webhookUrl = process.env.WEBHOOK_BASE_URL;
+        // Make sure the webhook URL starts with https
+        if (webhookUrl.startsWith("http://")) {
+          webhookUrl = webhookUrl.replace("http://", "https://");
+        } else if (!webhookUrl.startsWith("https://")) {
+          webhookUrl = `https://${webhookUrl}`;
+        }
+
+        // Trim any trailing slash
+        webhookUrl = webhookUrl.replace(/\/+$/, "");
+
+        // Use any to bypass TypeScript type checking
+        (predictionConfig as any).webhook =
+          `${webhookUrl}/replicate/webhook/train`;
+        (predictionConfig as any).webhook_events_filter = ["completed"];
+
+        console.log("Using webhook URL:", (predictionConfig as any).webhook);
+      } else {
+        console.log(
+          "Warning: No webhook URL configured, using synchronous mode"
+        );
+      }
+
+      // Log the final configuration for debugging
+      console.log("Final prediction config:", predictionConfig);
+
+      const prediction =
+        await this.replicate.predictions.create(predictionConfig);
+
+      console.log(
+        "Model training submitted successfully, prediction ID:",
+        prediction.id
+      );
       return {
         request_id: prediction.id,
-        response_url: prediction.urls.get
+        response_url: prediction.urls.get,
       };
     } catch (error) {
       console.error("Error in trainModel:", error);
-      
-      // For development mode, return a mock response
-      if (process.env.NODE_ENV === 'development') {
-        console.log("In development mode: Returning mock training response after error");
-        return {
-          request_id: "mock-error-recovery-id-" + Date.now(),
-          response_url: "https://api.replicate.com/v1/predictions/mock-error-recovery-id"
-        };
-      }
-      
       throw error;
     }
   }
 
   public async generateImageSync(tensorPath: string) {
     try {
-      console.log("Generating image synchronously with tensorPath:", tensorPath);
-      
-      // For development/testing if needed
-      if (process.env.NODE_ENV === 'development') {
-        console.log("Using mock image generation for development");
-        return {
-          imageUrl: "https://replicate.delivery/pbxt/FeNZUBbDXTpZOa2JhzxoOfUkWXUwoUQqACnqJTAXzJKmyexHB/out.png"
-        };
-      }
-      
+      console.log(
+        "Generating image synchronously with tensorPath:",
+        tensorPath
+      );
+
       // Use a different approach to avoid using 'wait'
       const prediction = await this.replicate.predictions.create({
-        version: "8ede8c08a677a46d24fdaaa6e0eaad6f0b5a2c7a684a0120009e96b3cdaaa33c",
+        version: "black-forest-labs/flux-1.1-pro-ultra",
         input: {
-          prompt: "Generate a head shot for this user in front of a white background",
+          prompt:
+            "A professional headshot photo in front of a white background",
           lora_url: tensorPath,
           lora_scale: 1,
-        }
+          num_inference_steps: 28,
+          guidance_scale: 7.5,
+        },
       });
 
       // Now explicitly poll for completion
-      let completedPrediction = await this.replicate.predictions.get(prediction.id);
-      
+      let completedPrediction = await this.replicate.predictions.get(
+        prediction.id
+      );
+
       // Poll until the prediction is complete
-      while (completedPrediction.status !== "succeeded" && completedPrediction.status !== "failed") {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between polls
-        completedPrediction = await this.replicate.predictions.get(prediction.id);
+      while (
+        completedPrediction.status !== "succeeded" &&
+        completedPrediction.status !== "failed"
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second between polls
+        completedPrediction = await this.replicate.predictions.get(
+          prediction.id
+        );
         console.log("Polling prediction status:", completedPrediction.status);
       }
 
       console.log("Sync image generation completed:", completedPrediction);
-      
+
       // Handle different output formats from Replicate
       let imageUrl;
-      if (completedPrediction.output && Array.isArray(completedPrediction.output) && completedPrediction.output.length > 0) {
+      if (
+        completedPrediction.output &&
+        Array.isArray(completedPrediction.output) &&
+        completedPrediction.output.length > 0
+      ) {
         imageUrl = completedPrediction.output[0];
-      } else if (completedPrediction.output && typeof completedPrediction.output === 'string') {
+      } else if (
+        completedPrediction.output &&
+        typeof completedPrediction.output === "string"
+      ) {
         imageUrl = completedPrediction.output;
       } else {
         throw new Error("No image URL found in Replicate response");
       }
 
       return {
-        imageUrl: imageUrl
+        imageUrl: imageUrl,
       };
     } catch (error) {
       console.error("Error in generateImageSync:", error);
