@@ -46,13 +46,13 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Run development servers
-npm run dev
+bun run dev
 
 # Build all packages
-npm run build
+bun run build
 ```
 
 ## Features
@@ -67,13 +67,13 @@ npm run build
 
 ```bash
 # Run frontend only
-npm run start:web
+bun run start:web
 
 # Run backend only
-npm run start:backend
+bun run start:backend
 
 # Run both frontend and backend
-npm run dev
+bun run dev
 ```
 
 ## Installation with Docker in Seconds
